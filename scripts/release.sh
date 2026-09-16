@@ -67,9 +67,16 @@ xcrun notarytool history --keychain-profile "$PROFILE" >/dev/null 2>&1 || \
 
 step "Setting the version to $VERSION"
 # A dry run leaves the tree exactly as it found it, or the next run refuses.
-[ "$DRY_RUN" = "1" ] && trap 'git checkout -- scripts/bundle.sh 2>/dev/null || true' EXIT
+[ "$DRY_RUN" = "1" ] && trap 'git checkout -- scripts/bundle.sh docs/index.html 2>/dev/null || true' EXIT
 sed -i '' -E "s|^VERSION=\"[^\"]*\"|VERSION=\"$VERSION\"|" scripts/bundle.sh
 grep -q "^VERSION=\"$VERSION\"" scripts/bundle.sh || die "could not set VERSION in scripts/bundle.sh"
+
+# The Pages site links straight to this release's disk image, so the download
+# works with no JavaScript and no API call.
+sed -i '' -E \
+  -e "s|releases/download/v[0-9.]+/Capstand-[0-9.]+\.dmg|releases/download/v$VERSION/Capstand-$VERSION.dmg|g" \
+  -e "s|(class=\"dl-ver\">)[0-9.]+|\1$VERSION|g" docs/index.html
+grep -q "Capstand-$VERSION.dmg" docs/index.html || die "could not set the download link in docs/index.html"
 
 step "Building and signing"
 swift build -c release --arch arm64 --arch x86_64 2>&1 | tail -1
@@ -161,7 +168,7 @@ fi
 
 step "Committing, tagging and publishing"
 if [ -n "$(git status --porcelain)" ]; then
-  git add scripts/bundle.sh
+  git add scripts/bundle.sh docs/index.html
   git commit -q -m "Release $VERSION"
 fi
 git push -q origin "$BRANCH"

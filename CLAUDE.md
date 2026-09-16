@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 make help          # list targets
 make build         # debug build of the bare binary
-make app           # release build → signed Capstand.app (Developer ID if in keychain, else ad-hoc)
+make app           # universal (arm64 + x86_64) release build → signed Capstand.app (Developer ID if in keychain, else ad-hoc)
 make run           # build app and launch it
 make install       # copy to /Applications and launch
 make devices       # list capture devices the way the app sees them (needs phone plugged in, unlocked, trusted)
@@ -47,8 +47,13 @@ Access is gated on camera permission (`AVCaptureDevice.requestAccess(for: .video
 
 The contract with `scripts/release.sh`: tag `v<version>`, asset `Capstand-<version>.dmg`, notarised and stapled. `release.sh` rewrites `VERSION=` in `scripts/bundle.sh` — that line is the single source of the version. Notarisation uses keychain profile `notarytool` (override with `NOTARY_KEYCHAIN_PROFILE`).
 
+## Website
+
+`docs/` is the GitHub Pages site (https://justynroberts.github.io/capstand/, served from `main` `/docs`). It's a single static `index.html` with no build step; the design is recorded in `DESIGN.md`. Its download buttons link straight to `releases/download/vX/Capstand-X.dmg`. `release.sh` rewrites those links and the `.dl-ver` spans, and commits the change with the version bump. Don't hand-edit the version numbers.
+
 ## Gotchas
 
+- Release builds are universal: `swift build --arch arm64 --arch x86_64` writes to `.build/apple/Products/Release/`, not `.build/release/`. `bundle.sh release` reads that path, and `release.sh` refuses to ship if `lipo -archs` doesn't show both architectures.
 - Never use `Bundle.module` — it bakes this machine's `.build` path in and crashes elsewhere. The Bricolage font is excluded from SwiftPM resources and copied by `bundle.sh`; `Fonts.register()` finds it by hand. `release.sh` smoke-tests the built app with `.build` moved aside.
 - `main.swift` wraps app startup in `MainActor.assumeIsolated` because `AppDelegate` is `@MainActor`.
 - "Open at Login" (`SMAppService.mainApp`) and self-update both expect the app in `/Applications` (`make install`).
