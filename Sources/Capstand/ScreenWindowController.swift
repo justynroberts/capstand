@@ -15,6 +15,10 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
     /// The latest show/hide request. A fade-out that finishes after a newer
     /// show must not order the window out.
     private var wantsVisible = false
+    /// While hidden the phone stays muted (capture routes its sound to the
+    /// Mac), so a screen hidden for this long lets go of the phone entirely.
+    private static let releaseAfter: TimeInterval = 120
+    private var releaseTimer: Timer?
     private var observers: [NSObjectProtocol] = []
     /// A modern iPhone in portrait, until the stream reports its real size.
     private var videoSize = CGSize(width: 1179, height: 2556)
@@ -117,6 +121,7 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
     func show() {
         guard let window else { return }
         wantsVisible = true
+        releaseTimer?.invalidate()
         audio.volume = 1
         sessionQueue.async { [session] in
             if !session.isRunning { session.startRunning() }
@@ -131,14 +136,22 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
     }
 
     /// Hiding keeps the capture running, muted, so showing again is instant —
-    /// restarting an iPhone capture session takes a second or two.
+    /// restarting an iPhone capture session takes a second or two — until
+    /// `releaseAfter` passes.
     /// `stopCapture` is for when the window is going away for good.
     func hide(stopCapture: Bool = false, then completion: (() -> Void)? = nil) {
         guard let window else { return }
         wantsVisible = false
         audio.volume = 0
+        releaseTimer?.invalidate()
         if stopCapture {
-            sessionQueue.async { [session] in session.stopRunning() }
+            stopSession()
+        } else {
+            releaseTimer = Timer.scheduledTimer(withTimeInterval: Self.releaseAfter, repeats: false) { [weak self] _ in
+                guard let self, !self.wantsVisible else { return }
+                NSLog("[capstand] \(self.device.localizedName) hidden for \(Int(Self.releaseAfter))s — releasing the phone")
+                self.stopSession()
+            }
         }
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.2
@@ -150,6 +163,10 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
             }
             completion?()
         })
+    }
+
+    private func stopSession() {
+        sessionQueue.async { [session] in session.stopRunning() }
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {

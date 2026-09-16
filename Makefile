@@ -6,8 +6,8 @@ help:          ## List targets
 build:         ## Debug build of the bare binary
 	swift build
 
-app:           ## Release build wrapped in a signed Capstand.app
-	swift build -c release
+app:           ## Universal (arm64 + x86_64) release build wrapped in a signed Capstand.app
+	swift build -c release --arch arm64 --arch x86_64
 	./scripts/bundle.sh release
 
 run: app       ## Build the app and launch it

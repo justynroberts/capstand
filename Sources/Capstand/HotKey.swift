@@ -10,6 +10,9 @@ final class HotKey {
     static let keyEquivalent = "i"
     static let modifierFlags: NSEvent.ModifierFlags = [.control, .option, .command]
 
+    /// False when another app already owns the combination.
+    private(set) var isRegistered = false
+
     private let action: () -> Void
     private var hotKey: EventHotKeyRef?
     private var handler: EventHandlerRef?
@@ -27,7 +30,8 @@ final class HotKey {
         let id = EventHotKeyID(signature: OSType(0x4350_5354), id: 1) // "CPST"
         let status = RegisterEventHotKey(UInt32(kVK_ANSI_I), UInt32(controlKey | optionKey | cmdKey),
                                          id, GetApplicationEventTarget(), 0, &hotKey)
-        if status != noErr { NSLog("[capstand] could not register \(Self.displayString): \(status)") }
+        isRegistered = status == noErr
+        if !isRegistered { NSLog("[capstand] could not register \(Self.displayString): \(status)") }
     }
 
     deinit {

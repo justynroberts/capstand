@@ -8,15 +8,23 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CONFIG="${1:-debug}"
 APP="$ROOT/Capstand.app"
-BIN="$ROOT/.build/$CONFIG/Capstand"
+# Release is universal (arm64 + x86_64): swift build --arch arm64 --arch x86_64
+# writes to .build/apple. Debug stays native-only for speed.
+if [ "$CONFIG" = "release" ]; then
+    BIN="$ROOT/.build/apple/Products/Release/Capstand"
+else
+    BIN="$ROOT/.build/$CONFIG/Capstand"
+fi
 VERSION="0.1.0"
 
-[ -x "$BIN" ] || { echo "Build first: swift build -c $CONFIG"; exit 1; }
+[ -x "$BIN" ] || { echo "Build first: make app (release) or swift build (debug)"; exit 1; }
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Capstand"
 cp "$ROOT/Sources/Capstand/Resources/BricolageGrotesque.ttf" "$APP/Contents/Resources/"
+# The SIL Open Font License requires its text to ship with the font.
+cp "$ROOT/Sources/Capstand/Resources/OFL.txt" "$APP/Contents/Resources/BricolageGrotesque-OFL.txt"
 # CC0 frames for the Frame menu; ImageFrame.bundled lists whatever is here.
 mkdir -p "$APP/Contents/Resources/Frames"
 cp "$ROOT/Assets/Frames/"*.png "$APP/Contents/Resources/Frames/"

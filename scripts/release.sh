@@ -72,8 +72,14 @@ sed -i '' -E "s|^VERSION=\"[^\"]*\"|VERSION=\"$VERSION\"|" scripts/bundle.sh
 grep -q "^VERSION=\"$VERSION\"" scripts/bundle.sh || die "could not set VERSION in scripts/bundle.sh"
 
 step "Building and signing"
-swift build -c release 2>&1 | tail -1
+swift build -c release --arch arm64 --arch x86_64 2>&1 | tail -1
 ./scripts/bundle.sh release | sed 's/^/  /'
+
+# Intel Macs get the same download, so the app must carry both slices.
+step "Checking the binary is universal"
+ARCHS="$(lipo -archs "$APP/Contents/MacOS/Capstand")"
+[[ "$ARCHS" == *arm64* && "$ARCHS" == *x86_64* ]] || die "the app is not universal: $ARCHS"
+echo "  $ARCHS"
 
 # SwiftPM resource lookups can fall back to this checkout's .build and pass
 # every local test while crashing elsewhere. Run a copy with .build hidden.

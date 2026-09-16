@@ -31,6 +31,9 @@ final class Updater {
     private(set) var available: UpdateInfo?
     private(set) var status: Status = .idle
     var onChange: (() -> Void)?
+    /// False while a phone screen is showing: a dialog that takes focus would
+    /// land in the recording. The update then waits in the menu instead.
+    var mayInterrupt: () -> Bool = { true }
 
     private var timer: Timer?
     private var task: Task<Void, Never>?
@@ -68,6 +71,8 @@ final class Updater {
     private func offer(_ info: UpdateInfo, force: Bool) {
         let defaults = UserDefaults.standard
         guard force || defaults.string(forKey: Self.offeredKey) != info.version else { return }
+        // Not marked as offered, so the next quiet check asks again.
+        guard force || mayInterrupt() else { return }
         defaults.set(info.version, forKey: Self.offeredKey)
 
         NSApp.activate()

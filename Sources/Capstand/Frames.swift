@@ -155,14 +155,18 @@ enum ImageFrame {
         bundled.first { $0.name == name } ?? bundled.first
     }
 
-    private static var cache: [URL: (portrait: Oriented, landscape: Oriented)] = [:]
+    /// Only the frame in use: each decoded frame is tens of megabytes.
+    private static var cache: (url: URL, portrait: Oriented, landscape: Oriented)?
 
-    /// Loads, cuts out and measures a frame once; later calls are free.
+    /// Loads, cuts out and measures a frame; repeat calls for it are free.
     static func load(_ url: URL, landscape: Bool) -> Oriented? {
-        if cache[url] == nil, let image = loadImage(url), let prepared = prepare(normalised(image)) {
-            cache[url] = prepared
+        if cache?.url != url {
+            cache = nil
+            if let image = loadImage(url), let prepared = prepare(normalised(image)) {
+                cache = (url, prepared.portrait, prepared.landscape)
+            }
         }
-        return landscape ? cache[url]?.landscape : cache[url]?.portrait
+        return landscape ? cache?.landscape : cache?.portrait
     }
 
     /// Validates, normalises and copies the image into place as the custom frame.
@@ -176,13 +180,13 @@ enum ImageFrame {
         else { throw ImportError.unreadable }
         CGImageDestinationAddImage(destination, image, nil)
         guard CGImageDestinationFinalize(destination) else { throw ImportError.unreadable }
-        cache[customURL] = prepared
+        cache = (customURL, prepared.portrait, prepared.landscape)
     }
 
     /// Portrait, with a flat-colour screen cut out. Flat mockups (Pomme Plate,
     /// most clip art) paint the screen instead of leaving it transparent.
     private static func normalised(_ image: CGImage) -> CGImage {
-        var image = image
+        var image = downscaled(image, maxDimension: 3000) ?? image
         if image.width > image.height, let turned = rotate(image, clockwise: true) { image = turned }
         return punchSolidScreen(image) ?? image
     }
@@ -246,16 +250,22 @@ enum ImageFrame {
                 && abs(Int(pixels[i + 2]) - Int(target.2)) <= 10
         }
 
-        var stack = [w / 2 + h / 2 * w]
-        while let index = stack.popLast() {
+        // Pixels are cleared as they are pushed, so each enters the stack at
+        // most once and it can never outgrow the image.
+        func take(_ index: Int, into stack: inout [Int]) {
             let i = index * 4
-            guard matches(i) else { continue }
+            guard matches(i) else { return }
             pixels[i] = 0; pixels[i + 1] = 0; pixels[i + 2] = 0; pixels[i + 3] = 0
+            stack.append(index)
+        }
+        var stack: [Int] = []
+        take(w / 2 + h / 2 * w, into: &stack)
+        while let index = stack.popLast() {
             let x = index % w, row = index / w
-            if x > 0 { stack.append(index - 1) }
-            if x < w - 1 { stack.append(index + 1) }
-            if row > 0 { stack.append(index - w) }
-            if row < h - 1 { stack.append(index + w) }
+            if x > 0 { take(index - 1, into: &stack) }
+            if x < w - 1 { take(index + 1, into: &stack) }
+            if row > 0 { take(index - w, into: &stack) }
+            if row < h - 1 { take(index + w, into: &stack) }
         }
 
         return pixels.withUnsafeMutableBytes { buffer in
@@ -263,6 +273,21 @@ enum ImageFrame {
                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?
                 .makeImage()
         }
+    }
+
+    /// Frames are drawn at window size; anything bigger only costs memory and time.
+    private static func downscaled(_ image: CGImage, maxDimension: Int) -> CGImage? {
+        let longest = max(image.width, image.height)
+        guard longest > maxDimension else { return nil }
+        let scale = CGFloat(maxDimension) / CGFloat(longest)
+        let w = Int(CGFloat(image.width) * scale), h = Int(CGFloat(image.height) * scale)
+        guard let context = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return context.makeImage()
     }
 
     /// Premultiplied RGBA, row 0 at the top of the image.

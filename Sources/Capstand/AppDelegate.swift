@@ -24,6 +24,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         watcher.onDisconnect = { [weak self] id in self?.deviceDisconnected(id) }
         watcher.start()
 
+        updater.mayInterrupt = { [weak self] in
+            !(self?.controllers.values.contains { $0.isShowing } ?? false)
+        }
         updater.start()
 
         hotKey = HotKey { [weak self] in
@@ -106,10 +109,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
 
-        let toggle = add(to: menu, "Show/Hide Screen", #selector(toggleAllScreens), key: HotKey.keyEquivalent)
-        toggle.keyEquivalentModifierMask = HotKey.modifierFlags
-        toggle.isEnabled = !controllers.isEmpty
-        toggle.toolTip = "\(HotKey.displayString) works from any app"
+        if hotKey?.isRegistered == true {
+            let toggle = add(to: menu, "Show/Hide Screen", #selector(toggleAllScreens), key: HotKey.keyEquivalent)
+            toggle.keyEquivalentModifierMask = HotKey.modifierFlags
+            toggle.isEnabled = !controllers.isEmpty
+            toggle.toolTip = "\(HotKey.displayString) works from any app"
+        } else {
+            add(to: menu, "Show/Hide Screen", #selector(toggleAllScreens)).isEnabled = !controllers.isEmpty
+            add(to: menu, "\(HotKey.displayString) is taken by another app", nil).isEnabled = false
+        }
 
         menu.addItem(.separator())
         menu.addItem(.sectionHeader(title: "Window"))
