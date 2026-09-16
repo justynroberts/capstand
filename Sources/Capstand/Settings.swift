@@ -23,13 +23,15 @@ enum Stacking: String, CaseIterable {
 
 /// How the screen is presented. FrameRenderer turns each into a FrameLayout.
 enum FrameStyle: String, CaseIterable {
-    case none, rounded, iphone, custom
+    case none, rounded, iphone, bundled, custom
 
+    /// `.bundled` has no single title; the menu lists each shipped frame.
     var title: String {
         switch self {
         case .none: return "None"
         case .rounded: return "Rounded Corners"
         case .iphone: return "iPhone"
+        case .bundled: return "Classic iPhone"
         case .custom: return "Custom Image"
         }
     }
@@ -78,6 +80,12 @@ enum Settings {
     static var frameStyle: FrameStyle {
         get { defaults.string(forKey: "frameStyle").flatMap(FrameStyle.init) ?? .iphone }
         set { defaults.set(newValue.rawValue, forKey: "frameStyle") }
+    }
+
+    /// Which shipped frame `.bundled` shows, by file name.
+    static var bundledFrame: String? {
+        get { defaults.string(forKey: "bundledFrame") }
+        set { defaults.set(newValue, forKey: "bundledFrame") }
     }
 
     static var finish: Finish {

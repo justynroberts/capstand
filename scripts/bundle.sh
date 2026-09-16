@@ -17,6 +17,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Capstand"
 cp "$ROOT/Sources/Capstand/Resources/BricolageGrotesque.ttf" "$APP/Contents/Resources/"
+# CC0 frames for the Frame menu; ImageFrame.bundled lists whatever is here.
+mkdir -p "$APP/Contents/Resources/Frames"
+cp "$ROOT/Assets/Frames/"*.png "$APP/Contents/Resources/Frames/"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

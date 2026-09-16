@@ -114,10 +114,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         add(to: size, "Actual Pixels", #selector(setSize(_:)), value: 0.0)
 
         let frame = submenu(in: menu, "Frame")
-        for style in FrameStyle.allCases {
-            let item = add(to: frame, style.title, #selector(setFrameStyle(_:)), value: style.rawValue, on: Settings.frameStyle == style)
-            if style == .custom { item.isEnabled = CustomFrame.exists }
+        for style in [FrameStyle.none, .rounded, .iphone] {
+            add(to: frame, style.title, #selector(setFrameStyle(_:)), value: style.rawValue, on: Settings.frameStyle == style)
         }
+        let current = ImageFrame.bundled(named: Settings.bundledFrame)?.name
+        for bundled in ImageFrame.bundled {
+            add(to: frame, bundled.title, #selector(setBundledFrame(_:)), value: bundled.name,
+                on: Settings.frameStyle == .bundled && bundled.name == current)
+        }
+        add(to: frame, FrameStyle.custom.title, #selector(setFrameStyle(_:)), value: FrameStyle.custom.rawValue,
+            on: Settings.frameStyle == .custom).isEnabled = ImageFrame.customExists
         frame.addItem(.separator())
         let isPhone = Settings.frameStyle == .iphone
         for finish in Finish.allCases {
@@ -210,6 +216,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.appearance = value.nsAppearance
     }
 
+    @objc private func setBundledFrame(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        Settings.bundledFrame = name
+        Settings.frameStyle = .bundled
+        applySettings()
+    }
+
     @objc private func setFinish(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String, let value = Finish(rawValue: raw) else { return }
         Settings.finish = value
@@ -221,16 +234,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         applySettings()
     }
 
-    /// Any front-on phone PNG with a transparent screen works — e.g. one
-    /// downloaded from a stock site under your own licence.
+    /// Any front-on phone PNG with a transparent or flat-colour screen works.
     @objc private func chooseCustomFrame() {
         NSApp.activate()
         let panel = NSOpenPanel()
-        panel.message = "Choose a front-on phone image (PNG) with a transparent screen"
+        panel.message = "Choose a front-on phone image (PNG) with a transparent or flat-colour screen"
         panel.allowedContentTypes = [.png]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try CustomFrame.importImage(from: url)
+            try ImageFrame.importImage(from: url)
             Settings.frameStyle = .custom
             applySettings()
         } catch {

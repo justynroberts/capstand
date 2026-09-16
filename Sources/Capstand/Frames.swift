@@ -40,14 +40,15 @@ enum FrameRenderer {
         case .iphone:
             return drawnPhone(video: video, short: short, landscape: landscape, island: island)
 
-        case .custom:
-            guard let custom = CustomFrame.current(landscape: landscape) else {
+        case .bundled, .custom:
+            let url = style == .custom ? ImageFrame.customURL : ImageFrame.bundled(named: Settings.bundledFrame)?.url
+            guard let url, let frame = ImageFrame.load(url, landscape: landscape) else {
                 return layout(for: .rounded, video: video, island: island)
             }
-            return FrameLayout(canvas: CGSize(width: custom.image.width, height: custom.image.height),
-                               screen: custom.screen,
-                               screenRadius: min(custom.screen.width, custom.screen.height) * 0.12,
-                               image: custom.image)
+            return FrameLayout(canvas: CGSize(width: frame.image.width, height: frame.image.height),
+                               screen: frame.screen,
+                               screenRadius: min(frame.screen.width, frame.screen.height) * 0.12,
+                               image: frame.image)
         }
     }
 
@@ -100,9 +101,19 @@ enum FrameRenderer {
     }
 }
 
-/// A user-supplied frame PNG: a front-on phone whose screen is transparent or one flat colour.
-/// Stored in Application Support so it survives rebuilds and self-updates.
-enum CustomFrame {
+/// A frame drawn from a PNG of a front-on phone whose screen is transparent or
+/// one flat colour: either shipped in the app (CC0 Pomme Plate mockups, in
+/// Assets/Frames) or imported by the user into Application Support, where it
+/// survives rebuilds and self-updates.
+enum ImageFrame {
+
+    struct Bundled {
+        /// File name without extension; what Settings.bundledFrame stores.
+        let name: String
+        let url: URL
+        /// "iPhone X-XS-11 Pro Space Gray" reads as "iPhone X/XS/11 Pro Space Gray".
+        var title: String { name.replacingOccurrences(of: "-", with: "/") }
+    }
 
     enum ImportError: LocalizedError {
         case unreadable, noScreen
@@ -119,37 +130,61 @@ enum CustomFrame {
         let screen: CGRect
     }
 
-    static var url: URL {
+    static var customURL: URL {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return support.appendingPathComponent("Capstand/Frames/custom.png")
     }
 
-    static var exists: Bool { FileManager.default.fileExists(atPath: url.path) }
+    static var customExists: Bool { FileManager.default.fileExists(atPath: customURL.path) }
 
-    private static var cache: (portrait: Oriented, landscape: Oriented)?
+    /// Shipped frames, sorted by name. bundle.sh copies Assets/Frames into
+    /// Contents/Resources/Frames; the bare binary reads the source tree.
+    static let bundled: [Bundled] = {
+        let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Assets/Frames")
+        let candidates = [Bundle.main.resourceURL?.appendingPathComponent("Frames"), source].compactMap { $0 }
+        guard let folder = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
+              let files = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+        else { return [] }
+        return files.filter { $0.pathExtension == "png" }
+            .map { Bundled(name: $0.deletingPathExtension().lastPathComponent, url: $0) }
+            .sorted { $0.name < $1.name }
+    }()
 
-    static func current(landscape: Bool) -> Oriented? {
-        if cache == nil, exists, let image = loadImage(url) {
-            cache = prepare(image)
-        }
-        return landscape ? cache?.landscape : cache?.portrait
+    static func bundled(named name: String?) -> Bundled? {
+        bundled.first { $0.name == name } ?? bundled.first
     }
 
-    /// Validates, normalises to portrait and copies the image into place.
+    private static var cache: [URL: (portrait: Oriented, landscape: Oriented)] = [:]
+
+    /// Loads, cuts out and measures a frame once; later calls are free.
+    static func load(_ url: URL, landscape: Bool) -> Oriented? {
+        if cache[url] == nil, let image = loadImage(url), let prepared = prepare(normalised(image)) {
+            cache[url] = prepared
+        }
+        return landscape ? cache[url]?.landscape : cache[url]?.portrait
+    }
+
+    /// Validates, normalises and copies the image into place as the custom frame.
     static func importImage(from source: URL) throws {
-        guard var image = loadImage(source) else { throw ImportError.unreadable }
-        if image.width > image.height, let turned = rotate(image, clockwise: true) { image = turned }
-        // Flat mockups (PommePlate, most clip art) paint the screen a solid
-        // colour instead of leaving it transparent. Cut it out.
-        if let punched = punchSolidScreen(image) { image = punched }
+        guard let loaded = loadImage(source) else { throw ImportError.unreadable }
+        let image = normalised(loaded)
         guard let prepared = prepare(image) else { throw ImportError.noScreen }
 
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
+        try FileManager.default.createDirectory(at: customURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard let destination = CGImageDestinationCreateWithURL(customURL as CFURL, UTType.png.identifier as CFString, 1, nil)
         else { throw ImportError.unreadable }
         CGImageDestinationAddImage(destination, image, nil)
         guard CGImageDestinationFinalize(destination) else { throw ImportError.unreadable }
-        cache = prepared
+        cache[customURL] = prepared
+    }
+
+    /// Portrait, with a flat-colour screen cut out. Flat mockups (Pomme Plate,
+    /// most clip art) paint the screen instead of leaving it transparent.
+    private static func normalised(_ image: CGImage) -> CGImage {
+        var image = image
+        if image.width > image.height, let turned = rotate(image, clockwise: true) { image = turned }
+        return punchSolidScreen(image) ?? image
     }
 
     private static func prepare(_ portrait: CGImage) -> (portrait: Oriented, landscape: Oriented)? {
