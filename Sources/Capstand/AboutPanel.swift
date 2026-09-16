@@ -17,9 +17,10 @@ final class AboutPanel: NSPanel {
         isReleasedWhenClosed = false
         Fonts.register()
 
-        let icon = NSImageView(image: NSImage(systemSymbolName: "iphone.gen3", accessibilityDescription: nil) ?? NSImage())
-        icon.symbolConfiguration = .init(pointSize: 40, weight: .light)
-        icon.contentTintColor = .controlAccentColor
+        let icon = NSImageView(image: NSApp.applicationIconImage)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        icon.widthAnchor.constraint(equalToConstant: 72).isActive = true
+        icon.heightAnchor.constraint(equalToConstant: 72).isActive = true
 
         let name = NSTextField(labelWithString: "Capstand")
         name.font = Fonts.display(30, weight: .bold)

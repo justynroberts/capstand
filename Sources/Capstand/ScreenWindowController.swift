@@ -33,7 +33,7 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
         self.device = device
         self.frameLayout = FrameRenderer.layout(for: Settings.frameStyle, video: videoSize, island: Settings.dynamicIsland)
 
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 780),
+        let window = ScreenWindow(contentRect: NSRect(x: 0, y: 0, width: 360, height: 780),
                               styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
                               backing: .buffered, defer: false)
         window.title = device.localizedName
@@ -51,19 +51,21 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
 
         super.init(window: window)
 
-        window.delegate = self
         window.contentView = screenView
         screenView.menu = contextMenu
 
+        // Restore the last position first. Everything below re-fits and saves
+        // the frame, so doing this any later overwrites it with the default.
+        let restored = window.setFrameUsingName(frameName)
+        if !restored { window.center() }
+
         configureSession()
         applySettings()
+        if !restored { resize(toScreenFraction: 0.6, animate: false) }
 
-        if window.setFrameUsingName(frameName) {
-            matchAspect(animate: false)
-        } else {
-            window.center()
-            resize(toScreenFraction: 0.6, animate: false)
-        }
+        window.onDoubleClick = { [weak self] in self?.hide() }
+        // Last, so the set-up above can't trigger windowDidMove saves.
+        window.delegate = self
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -234,5 +236,21 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
         frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
         window.setFrame(frame, display: true, animate: animate && window.isVisible)
         window.saveFrame(usingName: frameName)
+    }
+}
+
+/// Double-click anywhere hides the screen (bring it back with the hotkey or
+/// the menu). Handled here rather than in the view because a movable-by-
+/// background window consumes mouse-downs for dragging, and so the title-bar
+/// area can't turn a double-click into a zoom.
+final class ScreenWindow: NSWindow {
+    var onDoubleClick: (() -> Void)?
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .leftMouseDown, event.clickCount == 2, let onDoubleClick {
+            onDoubleClick()
+            return
+        }
+        super.sendEvent(event)
     }
 }

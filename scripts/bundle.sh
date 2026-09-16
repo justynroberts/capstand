@@ -22,6 +22,7 @@ VERSION="0.1.1"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Capstand"
+cp "$ROOT/Assets/Capstand.icns" "$APP/Contents/Resources/Capstand.icns"
 cp "$ROOT/Sources/Capstand/Resources/BricolageGrotesque.ttf" "$APP/Contents/Resources/"
 # The SIL Open Font License requires its text to ship with the font.
 cp "$ROOT/Sources/Capstand/Resources/OFL.txt" "$APP/Contents/Resources/BricolageGrotesque-OFL.txt"
@@ -41,6 +42,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleExecutable</key><string>Capstand</string>
+    <key>CFBundleIconFile</key><string>Capstand</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHumanReadableCopyright</key>

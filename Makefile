@@ -1,4 +1,4 @@
-.PHONY: help build app run install devices release release-dry clean
+.PHONY: help build app run install devices icon release release-dry clean
 
 help:          ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/'
@@ -19,6 +19,9 @@ install: app   ## Copy into /Applications and launch (needed for Open at Login a
 	rm -rf /Applications/Capstand.app
 	ditto Capstand.app /Applications/Capstand.app
 	open /Applications/Capstand.app
+
+icon:          ## Redraw Assets/Capstand.icns and docs/icon.png from scripts/make-icon.swift
+	xcrun swift scripts/make-icon.swift "$(CURDIR)"
 
 devices:       ## List capture devices as the app sees them
 	swift run Capstand --list-devices
