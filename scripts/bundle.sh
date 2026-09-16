@@ -15,7 +15,7 @@ if [ "$CONFIG" = "release" ]; then
 else
     BIN="$ROOT/.build/$CONFIG/Capstand"
 fi
-VERSION="0.1.0"
+VERSION="0.1.1"
 
 [ -x "$BIN" ] || { echo "Build first: make app (release) or swift build (debug)"; exit 1; }
 
