@@ -11,6 +11,10 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
     private let sessionQueue = DispatchQueue(label: "com.fintonlabs.capstand.session")
     private let screenView = ScreenView()
     private var input: AVCaptureDeviceInput?
+    private let audio = AVCaptureAudioPreviewOutput()
+    /// The latest show/hide request. A fade-out that finishes after a newer
+    /// show must not order the window out.
+    private var wantsVisible = false
     private var observers: [NSObjectProtocol] = []
     /// A modern iPhone in portrait, until the stream reports its real size.
     private var videoSize = CGSize(width: 1179, height: 2556)
@@ -19,7 +23,7 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
 
     private var frameName: String { "screen-\(device.uniqueID)" }
 
-    var isShowing: Bool { window?.isVisible ?? false }
+    var isShowing: Bool { wantsVisible }
 
     init(device: AVCaptureDevice, contextMenu: NSMenu) {
         self.device = device
@@ -78,7 +82,6 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
             NSLog("[capstand] could not open \(device.localizedName): \(error)")
         }
         // Without this the phone's sound goes nowhere: capture mutes the phone.
-        let audio = AVCaptureAudioPreviewOutput()
         audio.volume = 1
         if session.canAddOutput(audio) { session.addOutput(audio) }
         session.commitConfiguration()
@@ -113,10 +116,12 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
 
     func show() {
         guard let window else { return }
+        wantsVisible = true
+        audio.volume = 1
         sessionQueue.async { [session] in
             if !session.isRunning { session.startRunning() }
         }
-        window.alphaValue = 0
+        if !window.isVisible { window.alphaValue = 0 }
         // Never steals focus from whatever is being recorded alongside it.
         window.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { context in
@@ -125,15 +130,24 @@ final class ScreenWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    func hide(then completion: (() -> Void)? = nil) {
+    /// Hiding keeps the capture running, muted, so showing again is instant —
+    /// restarting an iPhone capture session takes a second or two.
+    /// `stopCapture` is for when the window is going away for good.
+    func hide(stopCapture: Bool = false, then completion: (() -> Void)? = nil) {
         guard let window else { return }
-        sessionQueue.async { [session] in session.stopRunning() }
+        wantsVisible = false
+        audio.volume = 0
+        if stopCapture {
+            sessionQueue.async { [session] in session.stopRunning() }
+        }
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.2
             window.animator().alphaValue = 0
-        }, completionHandler: {
-            window.orderOut(nil)
-            window.alphaValue = 1
+        }, completionHandler: { [weak self] in
+            if self?.wantsVisible == false {
+                window.orderOut(nil)
+                window.alphaValue = 1
+            }
             completion?()
         })
     }

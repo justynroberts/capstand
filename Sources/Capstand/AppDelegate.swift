@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let updater = Updater()
     private var statusItem: NSStatusItem!
     private var controllers: [String: ScreenWindowController] = [:]
+    private var hotKey: HotKey?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.appearance = Settings.appearance.nsAppearance
@@ -24,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         watcher.start()
 
         updater.start()
+
+        hotKey = HotKey { [weak self] in
+            MainActor.assumeIsolated { self?.toggleAllScreens() }
+        }
     }
 
     // MARK: - Devices
@@ -42,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func deviceDisconnected(_ id: String) {
         guard let controller = controllers.removeValue(forKey: id) else { return }
-        controller.hide { controller.close() }
+        controller.hide(stopCapture: true) { controller.close() }
         updateStatusIcon()
     }
 
@@ -100,6 +105,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     value: controller.device.uniqueID, on: controller.isShowing)
             }
         }
+
+        let toggle = add(to: menu, "Show/Hide Screen", #selector(toggleAllScreens), key: HotKey.keyEquivalent)
+        toggle.keyEquivalentModifierMask = HotKey.modifierFlags
+        toggle.isEnabled = !controllers.isEmpty
+        toggle.toolTip = "\(HotKey.displayString) works from any app"
 
         menu.addItem(.separator())
         menu.addItem(.sectionHeader(title: "Window"))
@@ -183,6 +193,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleScreen(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String, let controller = controllers[id] else { return }
         controller.isShowing ? controller.hide() : controller.show()
+    }
+
+    /// The hotkey: if any phone window is showing, hide them all; otherwise show them all.
+    @objc private func toggleAllScreens() {
+        guard !controllers.isEmpty else { return NSSound.beep() }
+        let anyShowing = controllers.values.contains { $0.isShowing }
+        for controller in controllers.values {
+            anyShowing ? controller.hide() : controller.show()
+        }
     }
 
     @objc private func setStacking(_ sender: NSMenuItem) {
